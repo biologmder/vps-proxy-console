@@ -64,7 +64,7 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 	}
 	nodeID := node["item"].(map[string]any)["id"].(string)
 	deploy := node["deploy_command"].(string)
-	for _, expected := range []string{"PANEL_URL=https://panel.example.test:8443", "NODE_ID=" + nodeID, "NODE_TOKEN=" + node["token"].(string), "git clone https://github.com/biologmder/vps-proxy-console.git", "docker compose -f docker-compose.agent.yml up -d --build"} {
+	for _, expected := range []string{"PANEL_URL=https://panel.example.test:8443", "NODE_ID=" + nodeID, "NODE_TOKEN=" + node["token"].(string), "git clone https://github.com/biologmder/vps-proxy-console.git", "docker compose -f docker-compose.agent.yml pull agent", "docker compose -f docker-compose.agent.yml up -d"} {
 		if !strings.Contains(deploy, expected) {
 			t.Fatalf("deploy command missing %q", expected)
 		}

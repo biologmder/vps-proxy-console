@@ -487,7 +487,8 @@ DATA_DIR=/data
 XRAY_BIN=/usr/local/bin/xray
 VPC_AGENT_ENV
 cd /opt/vps-proxy-console
-docker compose -f docker-compose.agent.yml up -d --build
+docker compose -f docker-compose.agent.yml pull agent
+docker compose -f docker-compose.agent.yml up -d
 docker compose -f docker-compose.agent.yml ps`, s.PublicURL, nodeID, token)
 }
 func (s *Server) subURL(token string) string {
