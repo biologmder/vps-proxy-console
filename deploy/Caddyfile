@@ -1,4 +1,11 @@
-{$PANEL_DOMAIN} {
+{
+    auto_https disable_redirects
+}
+
+https://{$PANEL_DOMAIN}:{$PANEL_PORT} {
+    tls {
+        dns cloudflare {env.CF_API_TOKEN}
+    }
     encode zstd gzip
     reverse_proxy panel:8080
     header {

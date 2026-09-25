@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
-      PUBLIC_URL: https://${PANEL_DOMAIN:?set PANEL_DOMAIN}
+      PUBLIC_URL: https://${PANEL_DOMAIN:?set PANEL_DOMAIN}:${PANEL_PORT:?set PANEL_PORT}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     volumes:
@@ -14,14 +14,17 @@ services:
     networks: [internal]
 
   caddy:
-    image: caddy:2.10-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     restart: unless-stopped
     depends_on: [panel]
     ports:
-      - "80:80"
-      - "443:443"
+      - "${PANEL_PORT:?set PANEL_PORT}:${PANEL_PORT:?set PANEL_PORT}/tcp"
     environment:
       PANEL_DOMAIN: ${PANEL_DOMAIN:?set PANEL_DOMAIN}
+      PANEL_PORT: ${PANEL_PORT:?set PANEL_PORT}
+      CF_API_TOKEN: ${CF_API_TOKEN:?set CF_API_TOKEN}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

@@ -17,7 +17,9 @@
 ## 部署要求
 
 - Linux VPS，Docker Compose v2；面板一台，入口/落地节点可分别部署在多台 VPS。
-- 面板域名解析到面板 VPS，开放 TCP 80/443。每个 TLS 入站域名解析到对应节点，节点需开放 TCP 80 与配置的代理端口。Shadowsocks 如需 UDP，还需开放同端口 UDP。
+- 面板域名由 Cloudflare 管理并解析到面板 VPS。面板默认只开放 TCP `8443`，**不占用主机的 80/443**；可在 `.env` 中通过 `PANEL_PORT` 改为其他端口。DNS-01 签发面板证书，不要求面板对外开放 80/443。
+- 每个 TLS 入站域名解析到对应节点。节点 Agent 仍需占用 TCP 80 完成其入站证书的 HTTP-01 验证，并开放所配置的代理端口；Shadowsocks 如需 UDP，还需开放同端口 UDP。面板和 Agent 可以同机运行，只要面板高位端口不与入站端口冲突。
+- 如果面板域名在 Cloudflare 开启代理（橙云），`PANEL_PORT` 应选 Cloudflare 支持的 HTTPS 端口，例如 `8443`、`2053`、`2083`、`2087` 或 `2096`；使用其他高位端口时，将该记录设为 DNS-only。
 - 若入口要连接落地 SOCKS5/HTTP，先由你现有的 WireGuard/Tailscale 等网络提供私网连通；面板不会创建隧道。SOCKS5/HTTP **不能**填 `0.0.0.0` 或公网 IP。
 - 面板与 Agent 的系统时间应准确，否则证书、到期和流量统计会受影响。
 - 下方使用 HTTPS 克隆地址，无需在 VPS 上配置 GitHub SSH 公钥。`git@github.com:...` 地址仍需先配置 SSH 公钥，即使仓库已公开。
@@ -28,11 +30,13 @@
 git clone https://github.com/biologmder/vps-proxy-console.git
 cd vps-proxy-console
 cp .env.example .env
-# 编辑 PANEL_DOMAIN、ADMIN_PASSWORD；如需提醒则填写 Telegram 参数
+# 编辑 PANEL_DOMAIN、PANEL_PORT、CF_API_TOKEN、ADMIN_PASSWORD；如需提醒则填写 Telegram 参数
 docker compose up -d --build
 ```
 
-浏览 `https://<PANEL_DOMAIN>` 登录。管理员密码至少 12 个字符；面板数据保存在 Docker 卷 `panel-data`。Caddy 自动为面板域名配置 HTTPS。
+Cloudflare API Token 限定到面板域名所在 Zone，并赋予 `Zone.Zone:Read` 与 `Zone.DNS:Edit`。浏览 `https://<PANEL_DOMAIN>:<PANEL_PORT>` 登录；默认示例为 `https://panel.example.com:8443`。管理员密码至少 12 个字符；面板数据保存在 Docker 卷 `panel-data`。Caddy 经 Cloudflare DNS-01 自动申请和续期可信 HTTPS 证书。面板的 `PUBLIC_URL` 及订阅链接会包含该端口。
+
+已有旧版面板占用 80/443 时，拉取新版并补齐 `.env` 的 `PANEL_PORT`、`CF_API_TOKEN`，再运行 `docker compose up -d --build`；新版 Compose 不再映射主机的 80/443。
 
 ## 节点部署
 
@@ -43,7 +47,7 @@ docker compose up -d --build
 git clone https://github.com/biologmder/vps-proxy-console.git
 cd vps-proxy-console
 cp agent.env.example agent.env
-# 填写 PANEL_URL、NODE_ID、NODE_TOKEN
+# 填写 PANEL_URL（含端口）、NODE_ID、NODE_TOKEN
 docker compose -f docker-compose.agent.yml up -d --build
 ```
 

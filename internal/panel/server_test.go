@@ -19,7 +19,7 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.DB.Close()
-	s, err := New(st, "a-very-strong-password", "http://example.test", "")
+	s, err := New(st, "a-very-strong-password", "https://panel.example.test:8443", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +69,9 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 	}
 	personID := person["item"].(map[string]any)["id"].(string)
 	token := person["token"].(string)
+	if !strings.HasPrefix(person["subscription_url"].(string), "https://panel.example.test:8443/sub/") {
+		t.Fatal("subscription URL lost the panel port")
+	}
 	status, in := post("/api/v1/inbounds", map[string]any{"node_id": nodeID, "name": "Primary", "protocol": "vless-tls", "port": 24443, "domain": "entry.example.com", "enabled": true}, cookie)
 	if status != 201 {
 		t.Fatalf("inbound status %d: %+v", status, in)

@@ -34,4 +34,8 @@ jobs:
           MIHOMO_BIN: /tmp/mihomo
         run: go test ./... && go vet ./...
       - name: Build deployment images
-        run: docker build -f Dockerfile.panel -t vpc-panel:test . && docker build -f Dockerfile.agent -t vpc-agent:test .
+        run: docker build -f Dockerfile.panel -t vpc-panel:test . && docker build -f Dockerfile.agent -t vpc-agent:test . && docker build -f Dockerfile.caddy -t vpc-caddy:test .
+      - name: Validate high-port Caddy configuration
+        run: |
+          docker run --rm -e PANEL_DOMAIN=panel.example.com -e PANEL_PORT=8443 -e CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567 -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" vpc-caddy:test caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile | jq -e '[.apps.http.servers[].listen[]] == [":8443"]'
+          PANEL_DOMAIN=panel.example.com PANEL_PORT=8443 CF_API_TOKEN=dummy ADMIN_PASSWORD=test-password-12345 docker compose config --format json | jq -e '([.services.caddy.ports[].published] == ["8443"]) and ([.services.caddy.ports[].target] == [8443])'
