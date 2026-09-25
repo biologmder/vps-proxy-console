@@ -1,11 +1,13 @@
 package xray
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +66,9 @@ func Compile(s model.State, nodeID string) (model.Desired, error) {
 				client["id"] = a.Credential
 			case "trojan-tls", "ss":
 				client["password"] = a.Credential
+				if in.Protocol == "ss" {
+					client["method"] = "aes-256-gcm"
+				}
 			}
 			if in.Protocol == "vless-reality" {
 				client["flow"] = "xtls-rprx-vision"
@@ -125,6 +130,17 @@ func Compile(s model.State, nodeID string) (model.Desired, error) {
 			if in.Protocol == "vless-reality" {
 				if in.RealityDest == "" || in.RealityPrivateKey == "" || in.RealityShortID == "" {
 					return model.Desired{}, errors.New("REALITY destination/key/short ID required")
+				}
+				host, rawPort, err := net.SplitHostPort(in.RealityDest)
+				port, portErr := strconv.Atoi(rawPort)
+				if err != nil || portErr != nil || host == "" || port < 1 || port > 65535 {
+					return model.Desired{}, errors.New("REALITY target must be host:port")
+				}
+				if len(in.RealityShortID) > 16 || len(in.RealityShortID)%2 != 0 {
+					return model.Desired{}, errors.New("REALITY short ID must contain an even number of hex digits, at most 16")
+				}
+				if _, err := hex.DecodeString(in.RealityShortID); err != nil {
+					return model.Desired{}, errors.New("REALITY short ID must be hexadecimal")
 				}
 				stream["security"] = "reality"
 				stream["realitySettings"] = map[string]any{"show": false, "dest": in.RealityDest, "xver": 0, "serverNames": []string{in.Domain}, "privateKey": in.RealityPrivateKey, "shortIds": []string{in.RealityShortID}}

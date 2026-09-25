@@ -7,6 +7,7 @@
 ## 已实现范围
 
 - 入站：VLESS/TLS、VLESS/REALITY、Trojan/TLS、Shadowsocks、VMess/WebSocket/TLS；SOCKS5/HTTP 落地入口仅可监听节点私网 IP。
+- 新建入站采用按用途分组的协议卡片，只显示所选协议必需字段；完整支持范围见[入站协议矩阵](docs/inbound-matrix.md)。
 - 出口：本机直连、阻断、手动 SOCKS5/HTTP 上游、面板管理的落地入口。
 - 分流：按用户、入站、域名或 IP/CIDR 匹配；按 `position` 从小到大生效。域名与 IP 列表分开编译为同优先级规则；两者是“或”，用户与入站条件是“且”。未匹配时直连。
 - 人员：独立凭据、跨入口节点总额度、到期时间、禁用、可轮换订阅令牌。额度按入口用户的上行加下行统计；Agent 20 秒周期上报，允许短时超额。

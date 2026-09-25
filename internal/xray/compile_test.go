@@ -62,6 +62,15 @@ func TestCompile(t *testing.T) {
 	if len(ins) != 5 {
 		t.Fatalf("got %d inbounds", len(ins))
 	}
+	for _, raw := range ins {
+		in := raw.(map[string]any)
+		if in["tag"] == "in-i4" {
+			users := in["settings"].(map[string]any)["users"].([]any)
+			if users[0].(map[string]any)["method"] != "aes-256-gcm" {
+				t.Fatal("Shadowsocks user missing per-user cipher")
+			}
+		}
+	}
 	rules := doc["routing"].(map[string]any)["rules"].([]any)
 	if len(rules) != 2 {
 		t.Fatalf("got %d rules", len(rules))
@@ -79,6 +88,13 @@ func TestPrivateLandingEnforced(t *testing.T) {
 	s.Inbounds[5].Listen = "0.0.0.0"
 	if _, err := Compile(s, "n2"); err == nil {
 		t.Fatal("public SOCKS listener accepted")
+	}
+}
+func TestInvalidRealityTarget(t *testing.T) {
+	s := fixture(t)
+	s.Inbounds[1].RealityDest = "d"
+	if _, err := Compile(s, "n1"); err == nil {
+		t.Fatal("invalid REALITY target accepted")
 	}
 }
 func TestQuotaDisablesAllAssignments(t *testing.T) {
