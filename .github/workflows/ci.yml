@@ -23,9 +23,15 @@ jobs:
           curl -fsSL --retry 3 https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip -o /tmp/xray.zip
           echo '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae  /tmp/xray.zip' | sha256sum -c -
           mkdir -p /tmp/xray && unzip -q /tmp/xray.zip -d /tmp/xray
+      - name: Install pinned Mihomo for subscription validation
+        run: |
+          curl -fsSL --retry 3 https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-linux-amd64-compatible-v1.19.31.gz -o /tmp/mihomo.gz
+          echo '04cf9f09671704f839ddbee2e93069dc831a4123a75281e725d1d96ab9ac1afc  /tmp/mihomo.gz' | sha256sum -c -
+          gzip -dc /tmp/mihomo.gz > /tmp/mihomo && chmod +x /tmp/mihomo
       - name: Test and vet Go services
         env:
           XRAY_BIN: /tmp/xray/xray
+          MIHOMO_BIN: /tmp/mihomo
         run: go test ./... && go vet ./...
       - name: Build deployment images
         run: docker build -f Dockerfile.panel -t vpc-panel:test . && docker build -f Dockerfile.agent -t vpc-agent:test .

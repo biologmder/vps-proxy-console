@@ -1,6 +1,9 @@
 package subscription
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,7 +29,23 @@ func TestMihomoConfig(t *testing.T) {
 	if bin == "" {
 		t.Skip("set MIHOMO_BIN to run integration test")
 	}
-	s := model.State{Nodes: []model.Node{{ID: "n", Name: "Node", Domain: "node.example.com"}}, Inbounds: []model.Inbound{{ID: "v", NodeID: "n", Name: "VLESS", Protocol: "vless-tls", Port: 443, Domain: "node.example.com", Enabled: true}, {ID: "vm", NodeID: "n", Name: "VMess", Protocol: "vmess-ws-tls", Port: 8443, Domain: "node.example.com", Path: "/ws", Enabled: true}}, Assignments: []model.Assignment{{ID: "a1", PersonID: "p", InboundID: "v", Credential: "11111111-1111-4111-8111-111111111111"}, {ID: "a2", PersonID: "p", InboundID: "vm", Credential: "22222222-2222-4222-8222-222222222222"}}}
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := model.State{Nodes: []model.Node{{ID: "n", Name: "Node", Domain: "node.example.com"}}, Inbounds: []model.Inbound{
+		{ID: "v", NodeID: "n", Name: "VLESS", Protocol: "vless-tls", Port: 443, Domain: "node.example.com", Enabled: true},
+		{ID: "r", NodeID: "n", Name: "REALITY", Protocol: "vless-reality", Port: 1443, Domain: "www.microsoft.com", RealityPublicKey: base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()), RealityShortID: "abcd1234", Enabled: true},
+		{ID: "tr", NodeID: "n", Name: "Trojan", Protocol: "trojan-tls", Port: 2443, Domain: "node.example.com", Enabled: true},
+		{ID: "ss", NodeID: "n", Name: "SS", Protocol: "ss", Port: 3443, Enabled: true},
+		{ID: "vm", NodeID: "n", Name: "VMess", Protocol: "vmess-ws-tls", Port: 8443, Domain: "node.example.com", Path: "/ws", Enabled: true},
+	}, Assignments: []model.Assignment{
+		{ID: "a1", PersonID: "p", InboundID: "v", Credential: "11111111-1111-4111-8111-111111111111"},
+		{ID: "a2", PersonID: "p", InboundID: "r", Credential: "22222222-2222-4222-8222-222222222222"},
+		{ID: "a3", PersonID: "p", InboundID: "tr", Credential: "trojan-password-123"},
+		{ID: "a4", PersonID: "p", InboundID: "ss", Credential: "ss-password-12345"},
+		{ID: "a5", PersonID: "p", InboundID: "vm", Credential: "33333333-3333-4333-8333-333333333333"},
+	}}
 	b, err := Mihomo(Entries(s, model.Person{ID: "p", Name: "Alice"}))
 	if err != nil {
 		t.Fatal(err)
