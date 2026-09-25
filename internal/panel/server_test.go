@@ -63,6 +63,15 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 		t.Fatal("node token exposed as a subscription URL")
 	}
 	nodeID := node["item"].(map[string]any)["id"].(string)
+	deploy := node["deploy_command"].(string)
+	for _, expected := range []string{"PANEL_URL=https://panel.example.test:8443", "NODE_ID=" + nodeID, "NODE_TOKEN=" + node["token"].(string), "git clone https://github.com/biologmder/vps-proxy-console.git", "docker compose -f docker-compose.agent.yml up -d --build"} {
+		if !strings.Contains(deploy, expected) {
+			t.Fatalf("deploy command missing %q", expected)
+		}
+	}
+	if !st.CheckSecret("nodes", nodeID, node["token"].(string)) {
+		t.Fatal("new node token invalid")
+	}
 	status, person := post("/api/v1/people", map[string]any{"name": "Alice", "quota_bytes": 1000000}, cookie)
 	if status != 201 {
 		t.Fatalf("person status %d: %+v", status, person)
@@ -126,5 +135,18 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 	r.Body.Close()
 	if r.StatusCode != 200 {
 		t.Fatalf("new token status %d", r.StatusCode)
+	}
+	status, rotatedNode := post("/api/v1/nodes/"+nodeID+"/rotate", map[string]any{}, cookie)
+	if status != 200 {
+		t.Fatalf("node rotation status %d", status)
+	}
+	if st.CheckSecret("nodes", nodeID, node["token"].(string)) {
+		t.Fatal("old node token still valid")
+	}
+	if !st.CheckSecret("nodes", nodeID, rotatedNode["token"].(string)) {
+		t.Fatal("rotated node token invalid")
+	}
+	if !strings.Contains(rotatedNode["deploy_command"].(string), "NODE_TOKEN="+rotatedNode["token"].(string)) {
+		t.Fatal("rotated command missing new token")
 	}
 }

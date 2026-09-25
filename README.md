@@ -40,16 +40,11 @@ Cloudflare API Token 限定到面板域名所在 Zone，并赋予 `Zone.Zone:Rea
 
 ## 节点部署
 
-1. 在面板添加节点，填写名称、公网域名、已有私网/隧道 IP（如需落地）；立即保存创建时显示的节点 ID 和令牌。
-2. 在对应节点复制代码，并创建 `agent.env`：
+1. 在面板的「VPS 节点」中添加节点，填写名称、公网域名、已有私网/隧道 IP（如需落地）。
+2. 创建后点击「复制整段命令」，在对应 Linux VPS 的终端粘贴执行。面板会自动把面板地址（含端口）、节点 ID 和令牌填好；命令会通过 HTTPS 拉取代码、写入 `agent.env` 并启动 Agent。目标 VPS 需要已安装 Git 与 Docker Compose，执行者需要有 `/opt` 写入与 Docker 权限。
+3. 回到面板查看节点是否在线。若令牌遗失或需要重装，在节点列表「轮换令牌」生成新的部署命令，旧令牌会立即失效。
 
-```bash
-git clone https://github.com/biologmder/vps-proxy-console.git
-cd vps-proxy-console
-cp agent.env.example agent.env
-# 填写 PANEL_URL（含端口）、NODE_ID、NODE_TOKEN
-docker compose -f docker-compose.agent.yml up -d --build
-```
+部署命令仅在创建或轮换令牌时显示，不会长期保存在面板。它包含节点令牌，仅应在对应 VPS 上执行；不要发到公开聊天或工单。
 
 Agent 使用 Linux host 网络，端口与 VPS 网络命名空间一致。它会连接面板并在有入站配置时应用 Xray。节点数据保存在 Docker 卷 `agent-data`，包含证书、令牌之外的配置和流量计数；切勿无备份删除该卷。
 

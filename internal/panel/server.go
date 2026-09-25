@@ -40,11 +40,16 @@ func New(st *store.Store, password, publicURL, webDir string) (*Server, error) {
 	if len(password) < 12 {
 		return nil, errors.New("ADMIN_PASSWORD must contain at least 12 characters")
 	}
+	publicURL = strings.TrimRight(publicURL, "/")
+	parsedURL, err := url.Parse(publicURL)
+	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" || parsedURL.User != nil || parsedURL.Path != "" || parsedURL.RawQuery != "" || parsedURL.Fragment != "" || strings.ContainsAny(publicURL, "\r\n") {
+		return nil, errors.New("PUBLIC_URL must be an absolute panel origin without a path")
+	}
 	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
-	return &Server{Store: st, PasswordHash: h, PublicURL: strings.TrimRight(publicURL, "/"), WebDir: webDir, sessions: map[string]time.Time{}, loginAttempts: map[string][]time.Time{}}, nil
+	return &Server{Store: st, PasswordHash: h, PublicURL: publicURL, WebDir: webDir, sessions: map[string]time.Time{}, loginAttempts: map[string][]time.Time{}}, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -343,10 +348,13 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	subscriptionURL := ""
+	deployCommand := ""
 	if kind == "people" {
 		subscriptionURL = s.subURL(secret)
+	} else if kind == "nodes" {
+		deployCommand = s.agentDeployCommand(newID, secret)
 	}
-	jsonOut(w, 201, map[string]any{"item": v, "token": secret, "subscription_url": subscriptionURL})
+	jsonOut(w, 201, map[string]any{"item": v, "token": secret, "subscription_url": subscriptionURL, "deploy_command": deployCommand})
 }
 
 func (s *Server) update(w http.ResponseWriter, r *http.Request) {
@@ -455,10 +463,32 @@ func (s *Server) rotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subscriptionURL := ""
+	deployCommand := ""
 	if kind == "people" {
 		subscriptionURL = s.subURL(token)
+	} else {
+		deployCommand = s.agentDeployCommand(id, token)
 	}
-	jsonOut(w, 200, map[string]string{"token": token, "subscription_url": subscriptionURL})
+	jsonOut(w, 200, map[string]string{"token": token, "subscription_url": subscriptionURL, "deploy_command": deployCommand})
+}
+func (s *Server) agentDeployCommand(nodeID, token string) string {
+	return fmt.Sprintf(`set -eu
+if [ -d /opt/vps-proxy-console/.git ]; then
+  git -C /opt/vps-proxy-console pull --ff-only
+else
+  git clone https://github.com/biologmder/vps-proxy-console.git /opt/vps-proxy-console
+fi
+umask 077
+cat > /opt/vps-proxy-console/agent.env <<'VPC_AGENT_ENV'
+PANEL_URL=%s
+NODE_ID=%s
+NODE_TOKEN=%s
+DATA_DIR=/data
+XRAY_BIN=/usr/local/bin/xray
+VPC_AGENT_ENV
+cd /opt/vps-proxy-console
+docker compose -f docker-compose.agent.yml up -d --build
+docker compose -f docker-compose.agent.yml ps`, s.PublicURL, nodeID, token)
 }
 func (s *Server) subURL(token string) string {
 	if token == "" {
