@@ -33,6 +33,8 @@ type Agent struct {
 	allowed                         map[string]bool
 	proc                            *exec.Cmd
 	activeHash                      [32]byte
+	failedHash                      [32]byte
+	retryAfter                      time.Time
 	totals                          map[string]int64
 	revision                        int64
 	applyError                      string
@@ -154,17 +156,23 @@ func (a *Agent) tick(ctx context.Context) {
 	}
 	if certRenewed {
 		a.activeHash = [32]byte{}
+		a.failedHash = [32]byte{}
 	}
 	if h != a.activeHash {
-		a.collect()
-		if err := a.apply(desired.Config); err != nil {
-			a.applyError = err.Error()
-			log.Printf("apply: %v", err)
-		} else {
-			a.activeHash = h
-			a.revision = desired.Revision
-			a.applyError = ""
-			log.Printf("applied revision %d", desired.Revision)
+		if h != a.failedHash || time.Now().After(a.retryAfter) {
+			a.collect()
+			if err := a.apply(desired.Config); err != nil {
+				a.applyError = err.Error()
+				a.failedHash = h
+				a.retryAfter = time.Now().Add(5 * time.Minute)
+				log.Printf("apply: %v", err)
+			} else {
+				a.activeHash = h
+				a.failedHash = [32]byte{}
+				a.revision = desired.Revision
+				a.applyError = ""
+				log.Printf("applied revision %d", desired.Revision)
+			}
 		}
 	}
 	if h == a.activeHash {
