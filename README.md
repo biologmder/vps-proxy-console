@@ -20,10 +20,13 @@
 - 面板域名解析到面板 VPS，开放 TCP 80/443。每个 TLS 入站域名解析到对应节点，节点需开放 TCP 80 与配置的代理端口。Shadowsocks 如需 UDP，还需开放同端口 UDP。
 - 若入口要连接落地 SOCKS5/HTTP，先由你现有的 WireGuard/Tailscale 等网络提供私网连通；面板不会创建隧道。SOCKS5/HTTP **不能**填 `0.0.0.0` 或公网 IP。
 - 面板与 Agent 的系统时间应准确，否则证书、到期和流量统计会受影响。
+- 下方使用 HTTPS 克隆地址，无需在 VPS 上配置 GitHub SSH 公钥。`git@github.com:...` 地址仍需先配置 SSH 公钥，即使仓库已公开。
 
 ## 面板部署
 
 ```bash
+git clone https://github.com/biologmder/vps-proxy-console.git
+cd vps-proxy-console
 cp .env.example .env
 # 编辑 PANEL_DOMAIN、ADMIN_PASSWORD；如需提醒则填写 Telegram 参数
 docker compose up -d --build
@@ -37,6 +40,8 @@ docker compose up -d --build
 2. 在对应节点复制代码，并创建 `agent.env`：
 
 ```bash
+git clone https://github.com/biologmder/vps-proxy-console.git
+cd vps-proxy-console
 cp agent.env.example agent.env
 # 填写 PANEL_URL、NODE_ID、NODE_TOKEN
 docker compose -f docker-compose.agent.yml up -d --build
@@ -76,4 +81,4 @@ XRAY_BIN=/usr/local/bin/xray go test ./internal/xray -run TestRealXrayConfig -v
 
 ## 安全与许可证
 
-项目代码为独立实现，不复制参考项目代码。Xray-core 使用 MPL-2.0；React、Go 依赖保留各自许可证。此私有仓库暂不添加对外开源许可证。
+项目代码为独立实现，不复制参考项目代码。Xray-core 使用 MPL-2.0；React、Go 依赖保留各自许可证。仓库公开可见；项目本身尚未选择开源许可证。
