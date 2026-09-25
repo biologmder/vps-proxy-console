@@ -565,10 +565,16 @@ func (s *Server) validate(kind, id string, v any, replacing bool) error {
 			return errors.New("outbound node not found")
 		}
 	}
+	assignmentKeys := map[string]bool{}
 	for _, a := range st.Assignments {
 		if !exists(st, "people", a.PersonID) || !exists(st, "inbounds", a.InboundID) {
 			return errors.New("assignment references missing person/inbound")
 		}
+		key := a.PersonID + ":" + a.InboundID
+		if assignmentKeys[key] {
+			return errors.New("person already assigned to this inbound")
+		}
+		assignmentKeys[key] = true
 		for _, in := range st.Inbounds {
 			if in.ID == a.InboundID && (in.Protocol == "socks" || in.Protocol == "http") {
 				return errors.New("landing inbounds cannot be assigned")
@@ -584,6 +590,13 @@ func (s *Server) validate(kind, id string, v any, replacing bool) error {
 		}
 		if r.InboundID != "" && !exists(st, "inbounds", r.InboundID) {
 			return errors.New("rule inbound not found")
+		}
+		if r.InboundID != "" {
+			for _, in := range st.Inbounds {
+				if in.ID == r.InboundID && in.NodeID != r.NodeID {
+					return errors.New("rule inbound belongs to another node")
+				}
+			}
 		}
 		for _, c := range r.CIDRs {
 			if net.ParseIP(c) == nil {

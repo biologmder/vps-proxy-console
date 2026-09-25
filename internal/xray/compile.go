@@ -165,6 +165,9 @@ func Compile(s model.State, nodeID string) (model.Desired, error) {
 			if landingNode == nil || landingNode.PrivateIP == "" {
 				return model.Desired{}, errors.New("landing node missing private IP")
 			}
+			if landing.NodeID == nodeID {
+				return model.Desired{}, errors.New("managed landing must be on another node")
+			}
 			host, port, user, pass = landingNode.PrivateIP, landing.Port, landing.ServiceUser, landing.ServicePassword
 			if out.Protocol != landing.Protocol {
 				return model.Desired{}, errors.New("outbound/landing protocol mismatch")

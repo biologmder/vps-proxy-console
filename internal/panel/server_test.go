@@ -59,6 +59,9 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 	if status != 201 {
 		t.Fatalf("node status %d: %+v", status, node)
 	}
+	if node["subscription_url"] != "" {
+		t.Fatal("node token exposed as a subscription URL")
+	}
 	nodeID := node["item"].(map[string]any)["id"].(string)
 	status, person := post("/api/v1/people", map[string]any{"name": "Alice", "quota_bytes": 1000000}, cookie)
 	if status != 201 {

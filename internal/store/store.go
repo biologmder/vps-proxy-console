@@ -173,6 +173,7 @@ func (s *Store) State() (model.State, error) {
 	if err = rows.Err(); err != nil {
 		return state, err
 	}
+	_ = rows.Close()
 	personTotals := map[string]int64{}
 	rows2, err := s.DB.Query(`SELECT person_id,total FROM usage`)
 	if err != nil {
@@ -186,6 +187,9 @@ func (s *Store) State() (model.State, error) {
 			return state, err
 		}
 		personTotals[id] += n
+	}
+	if err = rows2.Err(); err != nil {
+		return state, err
 	}
 	for i := range state.People {
 		state.People[i].UsedBytes = personTotals[state.People[i].ID]
