@@ -1,0 +1,8 @@
+.env
+data/
+web/node_modules/
+web/dist/
+*.db
+*.log
+*.exe
+*.tsbuildinfo

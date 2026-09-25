@@ -1,0 +1,12 @@
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    restart: unless-stopped
+    network_mode: host
+    env_file: agent.env
+    volumes:
+      - agent-data:/data
+volumes:
+  agent-data: {}

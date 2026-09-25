@@ -1,0 +1,9 @@
+.git
+.env
+agent.env
+data
+web/node_modules
+web/dist
+*.db
+*.log
+work
