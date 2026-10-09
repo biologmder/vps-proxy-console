@@ -7,6 +7,8 @@ services:
     environment:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
       PUBLIC_URL: https://${PANEL_DOMAIN:?set PANEL_DOMAIN}:${PANEL_PORT:?set PANEL_PORT}
+      # The panel is only reachable through Caddy, which sets X-Forwarded-For.
+      TRUST_PROXY: "1"
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     volumes:

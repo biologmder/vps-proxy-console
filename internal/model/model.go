@@ -30,10 +30,18 @@ type Inbound struct {
 	NodeID            string `json:"node_id"`
 	Name              string `json:"name"`
 	Protocol          string `json:"protocol"`
+	Network           string `json:"network,omitempty"`
+	Security          string `json:"security,omitempty"`
 	Listen            string `json:"listen"`
 	Port              int    `json:"port"`
 	Domain            string `json:"domain"`
 	Path              string `json:"path,omitempty"`
+	Host              string `json:"host,omitempty"`
+	ServiceName       string `json:"service_name,omitempty"`
+	XHTTPMode         string `json:"xhttp_mode,omitempty"`
+	Flow              string `json:"flow,omitempty"`
+	SSMethod          string `json:"ss_method,omitempty"`
+	Fingerprint       string `json:"fingerprint,omitempty"`
 	RealityDest       string `json:"reality_dest,omitempty"`
 	RealityPrivateKey string `json:"reality_private_key,omitempty"`
 	RealityPublicKey  string `json:"reality_public_key,omitempty"`

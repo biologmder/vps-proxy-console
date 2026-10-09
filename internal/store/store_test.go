@@ -52,3 +52,52 @@ func TestMonotonicUsageAndDeletedAssignment(t *testing.T) {
 		t.Fatalf("deleted assignment usage=%d", st.People[0].UsedBytes)
 	}
 }
+
+func TestMovedInboundDoesNotRejectReports(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.DB.Close()
+	in := model.Inbound{ID: "i1", NodeID: "n1", Protocol: "vless", Network: "tcp", Security: "tls", Port: 443, Domain: "node.example.com", Enabled: true}
+	for _, v := range []struct {
+		kind, id string
+		value    any
+	}{
+		{"nodes", "n1", model.Node{ID: "n1", Name: "Old", Domain: "old.example.com"}},
+		{"nodes", "n2", model.Node{ID: "n2", Name: "New", Domain: "new.example.com"}},
+		{"people", "p1", model.Person{ID: "p1", Name: "Alice"}},
+		{"inbounds", "i1", in},
+		{"assignments", "a1", model.Assignment{ID: "a1", PersonID: "p1", InboundID: "i1", Credential: "uuid"}},
+	} {
+		if err := s.Upsert(v.kind, v.id, v.value, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Report("n1", model.Report{Totals: map[string]int64{"a1": 100}}); err != nil {
+		t.Fatal(err)
+	}
+	in.NodeID = "n2"
+	if err := s.Upsert("inbounds", "i1", in, true); err != nil {
+		t.Fatal(err)
+	}
+	// The old node keeps reporting its stale counter; that must not fail the report.
+	if err := s.Report("n1", model.Report{Totals: map[string]int64{"a1": 120}}); err != nil {
+		t.Fatalf("old node report rejected: %v", err)
+	}
+	if err := s.Report("n2", model.Report{Totals: map[string]int64{"a1": 30}}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.People[0].UsedBytes != 150 {
+		t.Fatalf("usage=%d, want 120 from n1 + 30 from n2", st.People[0].UsedBytes)
+	}
+	for _, n := range st.Nodes {
+		if n.LastSeen.IsZero() {
+			t.Fatalf("node %s not marked seen", n.ID)
+		}
+	}
+}

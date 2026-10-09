@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import QRCode from 'react-qr-code';
-import InboundEditor from './InboundEditor';
+import InboundEditor, { inboundLabel } from './InboundEditor';
 import { Activity, ArrowDownUp, Check, ChevronRight, CircleHelp, Copy, Globe2, KeyRound, LayoutDashboard, Link2, LogOut, Menu, Plus, RefreshCw, Server, Shield, Trash2, Users, X } from 'lucide-react';
 import './style.css';
 
@@ -46,12 +46,12 @@ function App(){
 }
 
 const descriptions:Record<string,string>={nodes:'管理入口和落地 VPS，查看 Agent 心跳与配置状态。',inbounds:'先选客户端入口或私网落地，再按协议填写必要配置。',outbounds:'定义手动上游代理或面板管理的落地节点。',rules:'按用户、入口和目标匹配出口；数字越小越优先。',people:'为每个人设置总流量额度、到期时间和订阅。',assignments:'决定每个人可以使用哪些入口协议与节点。'};
-const inboundLabels:Record<string,string>={'vless-reality':'VLESS · REALITY','vless-tls':'VLESS · TLS','trojan-tls':'Trojan · TLS','vmess-ws-tls':'VMess · WS + TLS',ss:'Shadowsocks',socks:'SOCKS5 · 落地',http:'HTTP · 落地'};
+;
 const columns:Record<string,string[]>={nodes:['节点','公网域名','私网地址','状态','最近心跳'],people:['人员','额度','已用','到期','状态'],inbounds:['名称','节点','协议','监听','状态'],outbounds:['名称','节点','协议','目标'],rules:['优先级','节点','匹配用户 / 入站','目标','出口'],assignments:['人员','入站','凭据']};
 function renderCells(page:string,x:Item,label:(k:Kind,id:unknown)=>string){switch(page){
   case 'nodes':return <><td><strong>{str(x.name)}</strong><small className="id">{x.id}</small></td><td>{str(x.domain)}</td><td>{str(x.private_ip)||'—'}</td><td><Status node={x}/></td><td>{date(x.last_seen)}</td></>;
   case 'people':return <><td><strong>{str(x.name)}</strong><small className="id">{x.id}</small></td><td>{Number(x.quota_bytes)?bytes(x.quota_bytes):'不限额'}</td><td>{bytes(x.used_bytes)}</td><td>{date(x.expires_at)}</td><td><span className={'badge '+(x.disabled?'bad':'good')}>{x.disabled?'已禁用':'有效'}</span></td></>;
-  case 'inbounds':return <><td><strong>{str(x.name)}</strong><small className="id">{x.id}</small></td><td>{label('nodes',x.node_id)}</td><td><span className="badge neutral">{inboundLabels[str(x.protocol)]||str(x.protocol)}</span></td><td>{str(x.listen)||'0.0.0.0'}:{str(x.port)}</td><td><span className={'badge '+(x.enabled?'good':'neutral')}>{x.enabled?'启用':'停用'}</span></td></>;
+  case 'inbounds':return <><td><strong>{str(x.name)}</strong><small className="id">{x.id}</small></td><td>{label('nodes',x.node_id)}</td><td><span className="badge neutral">{inboundLabel(x)}</span></td><td>{str(x.listen)||'0.0.0.0'}:{str(x.port)}</td><td><span className={'badge '+(x.enabled?'good':'neutral')}>{x.enabled?'启用':'停用'}</span></td></>;
   case 'outbounds':return <><td><strong>{str(x.name)}</strong></td><td>{label('nodes',x.node_id)}</td><td>{str(x.protocol).toUpperCase()}</td><td>{x.landing_inbound_id?`落地：${label('inbounds',x.landing_inbound_id)}`:`${str(x.host)}:${str(x.port)}`}</td></>;
   case 'rules':return <><td><strong>{str(x.position)}</strong></td><td>{label('nodes',x.node_id)}</td><td>{x.person_id?label('people',x.person_id):'所有用户'} / {x.inbound_id?label('inbounds',x.inbound_id):'所有入口'}</td><td>{[...(Array.isArray(x.domains)?x.domains:[]),...(Array.isArray(x.cidrs)?x.cidrs:[])].join(', ')||'所有目标'}</td><td>{x.outbound_id==='direct'?'直连':x.outbound_id==='block'?'阻断':label('outbounds',x.outbound_id)}</td></>;
   case 'assignments':return <><td><strong>{label('people',x.person_id)}</strong></td><td>{label('inbounds',x.inbound_id)}</td><td><code className="credential">{str(x.credential)}</code></td></>;

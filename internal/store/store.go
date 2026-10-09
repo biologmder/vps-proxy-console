@@ -31,6 +31,11 @@ func Open(path string) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL,id TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(kind,id))`,
 		`CREATE TABLE IF NOT EXISTS secrets(kind TEXT NOT NULL,id TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(kind,id))`,
 		`CREATE TABLE IF NOT EXISTS usage(assignment_id TEXT PRIMARY KEY,person_id TEXT NOT NULL,node_id TEXT NOT NULL,total INTEGER NOT NULL DEFAULT 0)`,
+		// Agent counters are monotonic per node, so usage is keyed by (assignment, node):
+		// an inbound moved to another node starts a fresh counter instead of colliding.
+		`CREATE TABLE IF NOT EXISTS node_usage(assignment_id TEXT NOT NULL,node_id TEXT NOT NULL,person_id TEXT NOT NULL,total INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(assignment_id,node_id))`,
+		`INSERT OR IGNORE INTO node_usage(assignment_id,node_id,person_id,total) SELECT assignment_id,node_id,person_id,total FROM usage`,
+		`DELETE FROM usage`,
 		`CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value INTEGER NOT NULL)`,
 		`INSERT OR IGNORE INTO meta(key,value) VALUES('revision',1)`,
 	} {
@@ -148,6 +153,7 @@ func (s *Store) State() (model.State, error) {
 		case "inbounds":
 			var x model.Inbound
 			if err = json.Unmarshal(b, &x); err == nil {
+				x.Normalize()
 				state.Inbounds = append(state.Inbounds, x)
 			}
 		case "outbounds":
@@ -175,7 +181,7 @@ func (s *Store) State() (model.State, error) {
 	}
 	_ = rows.Close()
 	personTotals := map[string]int64{}
-	rows2, err := s.DB.Query(`SELECT person_id,total FROM usage`)
+	rows2, err := s.DB.Query(`SELECT person_id,total FROM node_usage`)
 	if err != nil {
 		return state, err
 	}
@@ -229,12 +235,9 @@ func (s *Store) Report(nodeID string, r model.Report) error {
 		var ab []byte
 		err = tx.QueryRow(`SELECT data FROM records WHERE kind='assignments' AND id=?`, id).Scan(&ab)
 		if errors.Is(err, sql.ErrNoRows) {
-			var owner string
-			if tx.QueryRow(`SELECT node_id FROM usage WHERE assignment_id=?`, id).Scan(&owner) == nil && owner == nodeID {
-				_, err = tx.Exec(`UPDATE usage SET total=MAX(total,?) WHERE assignment_id=?`, total, id)
-				if err != nil {
-					return err
-				}
+			// Deleted assignment: keep accounting traffic the node saw before the change reached it.
+			if _, err = tx.Exec(`UPDATE node_usage SET total=MAX(total,?) WHERE assignment_id=? AND node_id=?`, total, id, nodeID); err != nil {
+				return err
 			}
 			continue
 		}
@@ -253,10 +256,19 @@ func (s *Store) Report(nodeID string, r model.Report) error {
 		if err = json.Unmarshal(ib, &in); err != nil {
 			return err
 		}
-		if in.NodeID != nodeID || in.Protocol == "socks" || in.Protocol == "http" {
-			return errors.New("counter not owned by node")
+		if in.IsLanding() {
+			continue
 		}
-		if _, err = tx.Exec(`INSERT INTO usage(assignment_id,person_id,node_id,total) VALUES(?,?,?,?) ON CONFLICT(assignment_id) DO UPDATE SET total=MAX(total,excluded.total)`, id, a.PersonID, nodeID, total); err != nil {
+		if in.NodeID != nodeID {
+			// The inbound moved to another node. The agent keeps its old counter forever,
+			// so rejecting the whole report would leave this node looking offline.
+			// Only accept growth of a counter this node already owned.
+			if _, err = tx.Exec(`UPDATE node_usage SET total=MAX(total,?) WHERE assignment_id=? AND node_id=?`, total, id, nodeID); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err = tx.Exec(`INSERT INTO node_usage(assignment_id,node_id,person_id,total) VALUES(?,?,?,?) ON CONFLICT(assignment_id,node_id) DO UPDATE SET total=MAX(total,excluded.total)`, id, nodeID, a.PersonID, total); err != nil {
 			return err
 		}
 	}

@@ -90,6 +90,23 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 	if status != 201 {
 		t.Fatalf("assignment status %d: %+v", status, assignment)
 	}
+	if in["item"].(map[string]any)["protocol"] != "vless" || in["item"].(map[string]any)["security"] != "tls" {
+		t.Fatalf("legacy protocol not normalized: %+v", in["item"])
+	}
+	status, ss := post("/api/v1/inbounds", map[string]any{"node_id": nodeID, "name": "SS2022", "protocol": "shadowsocks", "ss_method": "2022-blake3-aes-256-gcm", "port": 24444, "enabled": true}, cookie)
+	if status != 201 {
+		t.Fatalf("ss2022 inbound status %d: %+v", status, ss)
+	}
+	if key, _ := base64.StdEncoding.DecodeString(ss["item"].(map[string]any)["ss_server_key"].(string)); len(key) != 32 {
+		t.Fatalf("ss2022 server key has %d bytes", len(key))
+	}
+	status, ssAssignment := post("/api/v1/assignments", map[string]any{"person_id": personID, "inbound_id": ss["item"].(map[string]any)["id"]}, cookie)
+	if status != 201 {
+		t.Fatalf("ss2022 assignment status %d: %+v", status, ssAssignment)
+	}
+	if key, _ := base64.StdEncoding.DecodeString(ssAssignment["item"].(map[string]any)["credential"].(string)); len(key) != 32 {
+		t.Fatalf("ss2022 user key has %d bytes", len(key))
+	}
 	r, err := client.Get(server.URL + "/sub/" + token)
 	if err != nil {
 		t.Fatal(err)
@@ -148,5 +165,37 @@ func TestAdminToSubscriptionFlow(t *testing.T) {
 	}
 	if !strings.Contains(rotatedNode["deploy_command"].(string), "NODE_TOKEN="+rotatedNode["token"].(string)) {
 		t.Fatal("rotated command missing new token")
+	}
+}
+
+func TestLoginRateLimitPerForwardedClient(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.DB.Close()
+	s, err := New(st, "a-very-strong-password", "https://panel.example.test:8443", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.TrustProxy = true
+	h := s.Handler()
+	login := func(client, password string) int {
+		b, _ := json.Marshal(map[string]string{"password": password})
+		r := httptest.NewRequest("POST", "/api/v1/login", bytes.NewReader(b))
+		r.RemoteAddr = "172.18.0.5:40000" // every request arrives from the Caddy container
+		r.Header.Set("X-Forwarded-For", client)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := 0; i < 8; i++ {
+		login("198.51.100.7", "wrong-password")
+	}
+	if code := login("198.51.100.7", "wrong-password"); code != 429 {
+		t.Fatalf("attacker not limited: %d", code)
+	}
+	if code := login("203.0.113.9", "a-very-strong-password"); code != 200 {
+		t.Fatalf("admin locked out by another client's failures: %d", code)
 	}
 }

@@ -34,6 +34,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	s.TrustProxy = os.Getenv("TRUST_PROXY") == "1"
 	s.TelegramToken = os.Getenv("TELEGRAM_BOT_TOKEN")
 	s.TelegramChat = os.Getenv("TELEGRAM_CHAT_ID")
 	if s.TelegramToken != "" && s.TelegramChat != "" {

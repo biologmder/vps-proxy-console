@@ -31,6 +31,9 @@ type Server struct {
 	WebDir        string
 	TelegramToken string
 	TelegramChat  string
+	// TrustProxy makes login rate limiting key on X-Forwarded-For. Enable it only
+	// when the panel is reachable exclusively through a reverse proxy that sets it.
+	TrustProxy    bool
 	mu            sync.Mutex
 	sessions      map[string]time.Time
 	loginAttempts map[string][]time.Time
@@ -124,8 +127,28 @@ func uuid() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
+// clientIP returns the address used for login rate limiting. Behind Caddy every
+// request comes from the proxy, so RemoteAddr alone would let one attacker lock
+// out everyone. Caddy drops X-Forwarded-For from untrusted clients and appends
+// the real peer, so the last entry is the one it observed.
+func (s *Server) clientIP(r *http.Request) string {
+	if s.TrustProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if ip := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); ip != nil {
+				return ip.String()
+			}
+		}
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	ip := s.clientIP(r)
 	s.mu.Lock()
 	var recent []time.Time
 	for _, t := range s.loginAttempts[ip] {
@@ -273,27 +296,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		x.ID = newID
-		if x.Protocol == "ss" && x.SSServerKey == "" {
-			x.SSServerKey = random(24)
-		}
-		if x.Protocol == "socks" || x.Protocol == "http" {
-			if x.ServiceUser == "" {
-				x.ServiceUser = "relay"
-			}
-			if x.ServicePassword == "" {
-				x.ServicePassword = random(24)
-			}
-		}
-		if x.Protocol == "vless-reality" && x.RealityPrivateKey == "" {
-			key, err := ecdh.X25519().GenerateKey(rand.Reader)
-			if err != nil {
-				fail(w, 500, err.Error())
-				return
-			}
-			x.RealityPrivateKey = base64.RawURLEncoding.EncodeToString(key.Bytes())
-			x.RealityPublicKey = base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
-			x.RealityShortID = randomHex(4)
-		}
+		fillInboundSecrets(&x)
 		v = x
 	case "outbounds":
 		var x model.Outbound
@@ -319,17 +322,16 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		}
 		x.ID = newID
 		st, _ := s.Store.State()
-		var protocol string
+		x.Credential = random(24)
 		for _, in := range st.Inbounds {
 			if in.ID == x.InboundID {
-				protocol = in.Protocol
+				if in.UsesUUID() {
+					x.Credential = uuid()
+				} else if n := model.SS2022KeyLen(in.SSMethod); in.Protocol == model.ProtoShadowsocks && n > 0 {
+					x.Credential = randomKey(n)
+				}
 				break
 			}
-		}
-		if protocol == "vless-tls" || protocol == "vless-reality" || protocol == "vmess-ws-tls" {
-			x.Credential = uuid()
-		} else {
-			x.Credential = random(24)
 		}
 		v = x
 	}
@@ -398,6 +400,24 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 		var x model.Inbound
 		if err = decode(r, &x); err == nil {
 			x.ID = id
+			x.Normalize()
+			for _, old := range st.Inbounds {
+				if old.ID != id {
+					continue
+				}
+				// Existing client credentials are tied to the protocol and, for
+				// Shadowsocks, to the key format of the method.
+				if old.Protocol != x.Protocol || (x.Protocol == model.ProtoShadowsocks && model.SS2022KeyLen(old.SSMethod) != model.SS2022KeyLen(x.SSMethod)) {
+					fail(w, 400, "protocol or Shadowsocks key type cannot change; create a new inbound")
+					return
+				}
+				if x.SSServerKey == "" {
+					x.SSServerKey = old.SSServerKey
+				}
+				// REALITY keys are kept only when the client sends them back; an empty
+				// private key means "regenerate".
+			}
+			fillInboundSecrets(&x)
 			v = x
 		}
 	case "outbounds":
@@ -471,6 +491,51 @@ func (s *Server) rotate(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, map[string]string{"token": token, "subscription_url": subscriptionURL, "deploy_command": deployCommand})
 }
+
+// fillInboundSecrets normalizes the inbound and generates any server-side keys left blank.
+func fillInboundSecrets(x *model.Inbound) {
+	x.Normalize()
+	if x.Protocol == model.ProtoShadowsocks && x.SSServerKey == "" {
+		if n := model.SS2022KeyLen(x.SSMethod); n > 0 {
+			x.SSServerKey = randomKey(n)
+		} else {
+			x.SSServerKey = random(24)
+		}
+	}
+	if x.IsLanding() {
+		if x.ServiceUser == "" {
+			x.ServiceUser = "relay"
+		}
+		if x.ServicePassword == "" {
+			x.ServicePassword = random(24)
+		}
+	}
+	if x.Security == "reality" {
+		if x.RealityPrivateKey == "" {
+			key, err := ecdh.X25519().GenerateKey(rand.Reader)
+			if err != nil {
+				panic(err)
+			}
+			x.RealityPrivateKey = base64.RawURLEncoding.EncodeToString(key.Bytes())
+			x.RealityPublicKey = base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+		}
+		if x.RealityShortID == "" {
+			x.RealityShortID = randomHex(4)
+		}
+	} else {
+		x.RealityPrivateKey, x.RealityPublicKey, x.RealityShortID, x.RealityDest = "", "", "", ""
+	}
+}
+
+// randomKey returns a standard-base64 key of n bytes, as Shadowsocks 2022 requires.
+func randomKey(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
 func (s *Server) agentDeployCommand(nodeID, token string) string {
 	return fmt.Sprintf(`set -eu
 if [ -d /opt/vps-proxy-console/.git ]; then

@@ -6,8 +6,8 @@
 
 ## 已实现范围
 
-- 入站：VLESS/TLS、VLESS/REALITY、Trojan/TLS、Shadowsocks、VMess/WebSocket/TLS；SOCKS5/HTTP 落地入口仅可监听节点私网 IP。
-- 新建入站采用按用途分组的协议卡片，只显示所选协议必需字段；完整支持范围见[入站协议矩阵](docs/inbound-matrix.md)。
+- 入站：与 3x-ui 类似，协议（VLESS、VMess、Trojan、Shadowsocks 含 2022）、传输（TCP、WebSocket、gRPC、HTTPUpgrade、XHTTP）与安全层（无、TLS、REALITY）分开选择；SOCKS5/HTTP 落地入口仅可监听节点私网 IP。完整支持范围见[入站协议矩阵](docs/inbound-matrix.md)。
+- 安全默认：所有节点阻断代理用户访问私网与本机地址（`geoip:private`）。
 - 出口：本机直连、阻断、手动 SOCKS5/HTTP 上游、面板管理的落地入口。
 - 分流：按用户、入站、域名或 IP/CIDR 匹配；按 `position` 从小到大生效。域名与 IP 列表分开编译为同优先级规则；两者是“或”，用户与入站条件是“且”。未匹配时直连。
 - 人员：独立凭据、跨入口节点总额度、到期时间、禁用、可轮换订阅令牌。额度按入口用户的上行加下行统计；Agent 20 秒周期上报，允许短时超额。
@@ -70,7 +70,7 @@ cd web && npm ci && npm run build
 XRAY_BIN=/usr/local/bin/xray go test ./internal/xray -run TestRealXrayConfig -v
 ```
 
-本地开发：`ADMIN_PASSWORD=... DATABASE_PATH=./data/dev.db WEB_DIR=./web/dist go run ./cmd/panel`。生产环境建议仅通过 Caddy 暴露面板，勿直接对公网开放 8080。
+本地开发：`ADMIN_PASSWORD=... DATABASE_PATH=./data/dev.db WEB_DIR=./web/dist go run ./cmd/panel`。生产环境建议仅通过 Caddy 暴露面板，勿直接对公网开放 8080。Compose 中的 `TRUST_PROXY=1` 让登录限流按 Caddy 传入的真实客户端 IP 计数；若面板可被绕过 Caddy 直接访问，不要开启它。
 
 ## 已知边界
 
